@@ -35,5 +35,5 @@ sess.run(init)
 
 
 
-print(sess.run(x).shape)
+print(sess.run(x)[0,0])
 # print(data.shape)
