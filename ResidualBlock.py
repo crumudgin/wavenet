@@ -15,6 +15,13 @@ class ResidualBlock(tf.layers.Layer):
             name=name, 
             **kwargs
         )
+        self.initial_convolution = CausalConv1D(
+            filters=filters,
+            kernel_size=kernel_size,
+            strides=strides,
+            dilation_rate=dilation_rate,
+            name=name
+        )
         self.tanh_Convolution = CausalConv1D(
             filters=filters,
             kernel_size=kernel_size,
