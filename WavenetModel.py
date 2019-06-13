@@ -5,53 +5,59 @@ from PreprocessData import open_file
 
 from AudioReader import *
 
-def dilated_causle_convolution(x, dilation_value, filter_out, filter_width=2, name=None):
-    channels = x.shape[3]
-    padding = (filter_width - 1) * dilation_value
-    x = tf.pad(x, tf.constant([(0, 0,), (0, 0,), (1, 0), (0, 0)]) * padding)
-    filters = tf.get_variable("%s_weights" %name, [1, filter_width, channels, filter_out])
-    dilations = [1, 1, dilation_value, 1]
-    x = tf.nn.conv2d(x, filters, [1, 1, 1, 1], "VALID", dilations=dilations, name="%s_conv" %name)
-    return x
+class WaveNet:
+    # def __init__(self, data):
+    #     self.skip_sum = tf.zeros_like(data)
+    #     self.data = data
 
-def skip_connection(x, out_channels, name):
-    skip = dilated_causle_convolution(x, 1, max(out_channels * 20, 255), 1, name="%s_1x1_conv1" %name)
-    skip = tf.reduce_sum(skip, 2, keepdims=True)
-    skip = tf.nn.relu(skip)
-    skip = dilated_causle_convolution(x, 1, 255, 1, name="%s_1x1_conv2" %name)
-    skip = tf.nn.relu(skip)
-    skip = dilated_causle_convolution(x, 1, 255, 1, name="%s_1x1_conv3" %name)
-    return tf.nn.softmax(skip)
+    def dilated_causle_convolution(self, x, dilation_value, filter_out, filter_width=2, name=None):
+        channels = x.shape[3]
+        padding = (filter_width - 1) * dilation_value
+        x = tf.pad(x, tf.constant([(0, 0,), (0, 0,), (1, 0), (0, 0)]) * padding)
+        filters = tf.get_variable("%s_weights" %name, [1, filter_width, channels, filter_out])
+        dilations = [1, 1, dilation_value, 1]
+        x = tf.nn.conv2d(x, filters, [1, 1, 1, 1], "VALID", dilations=dilations, name="%s_conv" %name)
+        return x
 
-def residual_block(x, dilation_value, out_channels=0, final_block=False, name=None):
-    in_channels = x.shape[3]
-    out_channels = in_channels * 5 if out_channels == 0 else out_channels
+    def skip_connection(self, x, name="skip"):
+        skip = self.dilated_causle_convolution(x, 1, 255, 1, name="%s_1x1_conv1" %name)
+        skip = tf.reduce_sum(skip, 2, keepdims=True)
+        skip = tf.nn.relu(skip)
+        skip = self.dilated_causle_convolution(x, 1, 255, 1, name="%s_1x1_conv2" %name)
+        skip = tf.nn.relu(skip)
+        skip = self.dilated_causle_convolution(x, 1, 255, 1, name="%s_1x1_conv3" %name)
+        return tf.nn.softmax(skip)
 
-    x = dilated_causle_convolution(x, 1, out_channels, name="%s_input_conv" %name)
+    def residual_block(self, x, dilation_value, out_channels=32, name=None):
+        input_tensor = x
+        tanh = self.dilated_causle_convolution(x, dilation_value, out_channels, name="%s_tanh_conv" %name)
+        sigmoid = self.dilated_causle_convolution(x, dilation_value, out_channels, name="%s_sigmoid_conv" %name)
 
-    tanh = dilated_causle_convolution(x, dilation_value, out_channels, name="%s_tanh_conv" %name)
-    sigmoid = dilated_causle_convolution(x, dilation_value, out_channels, name="%s_sigmoid_conv" %name)
+        tanh = tf.math.tanh(tanh)
+        sigmoid = tf.math.sigmoid(sigmoid)
 
-    tanh = tf.math.tanh(tanh)
-    sigmoid = tf.math.sigmoid(sigmoid)
-
-    multiplied = tf.math.multiply(tanh, sigmoid)
-    if final_block:
-        return skip_connection(x, out_channels, name)
-    multiplied = dilated_causle_convolution(x, 1, out_channels, 1, name="%s_1x1_conv" %name)
-    return multiplied + x
+        x = tf.math.multiply(tanh, sigmoid)
+        skip_conv = self.dilated_causle_convolution(x, 1, out_channels, 1, name="%s_skip_conv" %name)
+        self.skip_sum = tf.add(self.skip_sum, skip_conv)
+        x = self.dilated_causle_convolution(x, 1, out_channels, 1, name="%s_1x1_conv" %name)
+        return input_tensor + x
 
 
-def model(data):
-    x = residual_block(data, 1, out_channels=32, name="res_1")
-    x = residual_block(data, 2, name="res_2")
-    x = residual_block(data, 4, name="res_3")
-    x = residual_block(data, 8, final_block=True, name="res_4")
-    return x
+    def model(self, data):
+        x = self.dilated_causle_convolution(data, 1, 32, name="input_conv")
+        self.skip_sum = tf.zeros_like(x)
+        x = self.residual_block(x, 1, name="res_1")
+        x = self.residual_block(x, 2, name="res_2")
+        x = self.residual_block(x, 4, name="res_3")
+        x = self.residual_block(x, 8, name="res_4")
+        x = self.skip_connection(self.skip_sum)
+        return x
+
+waveNet = WaveNet()
 
 data = open_file("p225_001.wav")
 
-x = model(data)
+x = waveNet.model(data)
 
 sess = tf.Session()
 init = tf.global_variables_initializer()
