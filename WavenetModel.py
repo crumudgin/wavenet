@@ -1,8 +1,7 @@
 import tensorflow as tf
 import numpy as np
 import wave
-from CasualConv1D import CausalConv1D
-from ResidualBlock import ResidualBlock
+from PreprocessData import open_file
 
 from AudioReader import *
 
@@ -50,13 +49,7 @@ def model(data):
     x = residual_block(data, 8, final_block=True, name="res_4")
     return x
 
-with wave.open("p225_001.wav") as audio:
-    num_of_frames = audio.getnframes()
-    frames = [i for i in audio.readframes(num_of_frames)]
-    data = tf.one_hot(frames, 256) #I think I'm supposed to do mu encoding here
-
-data = tf.convert_to_tensor([[data]], dtype="float32")
-print(data.shape)
+data = open_file("p225_001.wav")
 
 x = model(data)
 
