@@ -15,6 +15,15 @@ def dilated_causle_convolution(x, dilation_value, filter_out, filter_width=2, na
     x = tf.nn.conv2d(x, filters, [1, 1, 1, 1], "VALID", dilations=dilations, name="%s_conv" %name)
     return x
 
+def skip_connection(x, out_channels, name):
+    skip = dilated_causle_convolution(x, 1, max(out_channels * 20, 255), 1, name="%s_1x1_conv1" %name)
+    skip = tf.reduce_sum(skip, 2, keepdims=True)
+    skip = tf.nn.relu(skip)
+    skip = dilated_causle_convolution(x, 1, 255, 1, name="%s_1x1_conv2" %name)
+    skip = tf.nn.relu(skip)
+    skip = dilated_causle_convolution(x, 1, 255, 1, name="%s_1x1_conv3" %name)
+    return tf.nn.softmax(skip)
+
 def residual_block(x, dilation_value, out_channels=0, final_block=False, name=None):
     in_channels = x.shape[3]
     out_channels = in_channels * 5 if out_channels == 0 else out_channels
@@ -29,13 +38,7 @@ def residual_block(x, dilation_value, out_channels=0, final_block=False, name=No
 
     multiplied = tf.math.multiply(tanh, sigmoid)
     if final_block:
-        skip = dilated_causle_convolution(multiplied, 1, max(out_channels * 20, 255), 1, name="%s_1x1_conv1" %name)
-        skip = tf.reduce_sum(skip, 2, keepdims=True)
-        skip = tf.nn.relu(skip)
-        skip = dilated_causle_convolution(multiplied, 1, 255, 1, name="%s_1x1_conv2" %name)
-        skip = tf.nn.relu(skip)
-        skip = dilated_causle_convolution(multiplied, 1, 255, 1, name="%s_1x1_conv3" %name)
-        return tf.nn.softmax(skip)
+        return skip_connection(x, out_channels, name)
     multiplied = dilated_causle_convolution(x, 1, out_channels, 1, name="%s_1x1_conv" %name)
     return multiplied + x
 
