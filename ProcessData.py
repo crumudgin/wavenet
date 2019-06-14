@@ -3,7 +3,7 @@ import tensorflow as tf
 import numpy as np
 import wave
 
-def mu_law_encode(audio, quantization_channels):
+def mu_law_encode(audio, quantization_channels=256):
     '''
     Quantizes waveform amplitudes.
     All credit for this goes to ibab (https://github.com/ibab/tensorflow-wavenet)
@@ -19,7 +19,7 @@ def mu_law_encode(audio, quantization_channels):
         # Quantize signal to the specified number of levels.
         return tf.to_int32((signal + 1) / 2 * mu + 0.5)
 
-def mu_law_decode(output, quantization_channels):
+def mu_law_decode(output, quantization_channels=256):
     '''
     Recovers waveform from quantized values.
     All credit for this goes to ibab (https://github.com/ibab/tensorflow-wavenet)
@@ -33,14 +33,20 @@ def mu_law_decode(output, quantization_channels):
         return tf.sign(signal) * magnitude
 
 def open_file(file):
-    audio, _ = librosa.load(file, sr=None, mono=True)
-    audio = audio.reshape(-1, 1)
-    data = mu_law_encode(audio, 256)
-    data = tf.one_hot(data, 256)
-    data = tf.convert_to_tensor([data], dtype="float32")
-    return data
-    # with wave.open(file) as audio:
-    #     # mu_law_audio = mu_law_encode(audio, 256)
-    #     # data = tf.one_hot(mu_law_audio, -1, 256)
-    #     # data = tf.convert_to_tensor([[data]], dtype="float32")
-    # return data
+	with tf.Session() as session:
+		audio, sr = librosa.load(file, sr=None, mono=True)
+		audio = audio.reshape(-1, 1)
+		data = mu_law_encode(audio, 256)
+		data = tf.one_hot(data, 256)
+		data = tf.convert_to_tensor([data], dtype="float32")
+		tf.global_variables_initializer().run()
+		data = session.run(data)
+	return data, sr
+
+def write_to_file(data, sr, path="output.wav"):
+	with tf.Session() as session:
+		data = mu_law_decode(data)
+		tf.global_variables_initializer().run()
+		data = session.run(data)
+		librosa.output.write_wav(path, data, sr)
+	return data
